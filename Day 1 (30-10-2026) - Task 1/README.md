@@ -1,4 +1,4 @@
-# Taskbear Web Application – Response Manipulation Findings
+# Task 1 - Taskbear Web Application
 
 ## Overview
 
