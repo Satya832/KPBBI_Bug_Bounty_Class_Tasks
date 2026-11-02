@@ -1,46 +1,31 @@
-# Task 1 - Taskbear Web Application
+# Client-Side Response Manipulation Allows OTP Verification Bypass
 
-## Overview
+## Target
+`https://taskbear.com.au/`
 
-During authorized security testing of the Taskbear web application, response manipulation was observed in multiple verification and registration flows using Burp Suite.
+## Technical Severity
+**High**
 
-The following three instances are documented:
+## Vulnerability Details
 
-1. **Mobile OTP Verification – Response Manipulation**
-2. **Email OTP Verification – Response Manipulation**
-3. **Signup Flow – Response Manipulation**
+### URL / Location
+`POST /api/v1/uwa/auth/otp/verify`
 
-> **Important:** Changing an HTTP response from `401` to `200` does not by itself prove that the backend accepted the operation. The strongest evidence is whether the application subsequently grants access or advances to a security-sensitive state.
+### Overview
+The OTP verification process relies on a client-controlled response. When an invalid OTP is submitted, the server returns `401 Unauthorized`. By intercepting and modifying this response to indicate successful verification, the application accepts the invalid OTP as valid.
 
----
+The issue was reproduced in both the **email OTP** and **mobile OTP** verification flows.
 
-# 1. Mobile OTP Verification – Response Manipulation
+### Steps to Reproduce
 
-## Vulnerability Type
-
-**OTP Verification – Response Manipulation / Client-Side Trust Issue**
-
-## Target Application
-
-**Taskbear Web Application**
-
-## Vulnerable Endpoint
-
-```http
-POST /api/v1/uwa/auth/otp/verify
-```
-
-## Description
-
-During testing of the mobile OTP verification process, an invalid OTP was submitted.
-
-The original server response rejected the OTP with:
+1. Navigate to the Taskbear signup page and enter a test email address.
+2. Request an OTP and submit an invalid OTP.
+3. Intercept the OTP verification response using Burp Suite.
+4. Observe the legitimate server response:
 
 ```http
 HTTP/2 401 Unauthorized
 ```
-
-with the message:
 
 ```json
 {
@@ -49,309 +34,55 @@ with the message:
 }
 ```
 
-The response was then manipulated in Burp Suite to return a successful response:
+5. Modify the intercepted response to:
 
 ```http
-HTTP/2 200 OK
+HTTP/2 201 Created
 ```
-
-with:
 
 ```json
 {
-  "statusCode": 200,
-  "message": "OTP verified successfully"
+  "contact": "<redacted>",
+  "verifiedAt": "<timestamp>"
 }
 ```
 
-The application subsequently continued the verification flow.
+6. Forward the modified response to the application.
+7. The application displays a successful verification confirmation and proceeds with the registration/onboarding flow despite the invalid OTP.
+8. The same behavior can be reproduced in the mobile OTP verification flow.
 
-## Steps to Reproduce
+### Impact
 
-### Step 1 – Open mobile verification
+An attacker can bypass the OTP verification step by manipulating the client-side response, without knowing the valid OTP.
 
-![Mobile OTP Verification](images/mobile-otp-01.png)
+This allows an attacker to proceed through account registration and onboarding despite submitting an invalid OTP.
 
-### Step 2 – Confirm the mobile number
+### Evidence
 
-![Confirm Mobile Number](images/mobile-otp-02.png)
+The following screenshots demonstrate the issue:
 
-### Step 3 – Submit an invalid OTP
+- Invalid OTP submission.
 
-An invalid OTP such as `123456` was submitted.
+<img width="1920" height="968" alt="1" src="https://github.com/user-attachments/assets/7b4b979b-90db-4cbd-91a0-277f0185bfe9" />
 
-![Invalid Mobile OTP](images/mobile-otp-03.png)
+- Original `401 Unauthorized` response.
 
-### Step 4 – Observe the original server response
+<img width="1918" height="872" alt="2" src="https://github.com/user-attachments/assets/0c851994-4410-49d8-982a-9a046eb8927e" />
 
-The server rejected the invalid OTP with `401 Unauthorized`.
+- Manipulated `201 Created` response.
 
-![Original Mobile OTP Response](images/mobile-otp-04.png)
+<img width="1920" height="873" alt="3" src="https://github.com/user-attachments/assets/9dc75b50-99c3-4693-ba0b-dc4257018ab3" />
 
-### Step 5 – Manipulate the response
+- The same response manipulation against mobile OTP verification.
 
-The response was modified in Burp Suite to indicate successful verification.
+<img width="1920" height="872" alt="4" src="https://github.com/user-attachments/assets/93099cc8-964a-4878-af3b-d0b7826ede97" />
 
-![Modified Mobile OTP Response](images/mobile-otp-05.png)
+- Application proceeding to the onboarding flow after the manipulated response.
 
-### Step 6 – Verify the resulting application state
+<img width="1920" height="973" alt="5" src="https://github.com/user-attachments/assets/a34fb149-9348-4b47-93df-b908d3e543f3" />
 
-![Mobile OTP Verification Result](images/mobile-otp-06.png)
+### Remediation
 
-## Impact
+OTP verification should be enforced entirely on the server side. The application should maintain the verification state server-side and require successful server-side OTP validation before allowing registration or onboarding to proceed.
 
-If the application relies on client-controlled response data for verification decisions, an attacker may potentially bypass the intended OTP verification control.
-
-Potential impact includes:
-
-- Bypass of mobile OTP verification
-- Unauthorized continuation of protected workflows
-- Weakening of account verification controls
-- Possible account compromise depending on how subsequent server-side authorization is implemented
-
-## Remediation
-
-- Perform OTP validation exclusively on the server side.
-- Do not trust HTTP status codes or success messages supplied through client-side response handling.
-- Maintain OTP verification state server-side.
-- Ensure subsequent sensitive endpoints independently verify the user's verification state.
-- Use short-lived, single-use OTPs.
-- Enforce OTP attempt limits and rate limiting.
-
----
-
-# 2. Email OTP Verification – Response Manipulation
-
-## Vulnerability Type
-
-**OTP Verification – Response Manipulation / Client-Side Trust Issue**
-
-## Target Application
-
-**Taskbear Web Application**
-
-## Vulnerable Endpoint
-
-```http
-POST /api/v1/uwa/auth/otp/verify
-```
-
-## Description
-
-During testing of the email OTP verification process, an invalid OTP was submitted.
-
-The original response was:
-
-```http
-HTTP/2 401 Unauthorized
-```
-
-with:
-
-```json
-{
-  "statusCode": 401,
-  "message": "OTP invalid or expired"
-}
-```
-
-The response was manipulated using Burp Suite to return a successful verification response:
-
-```http
-HTTP/2 200 OK
-```
-
-The application subsequently proceeded with the registration flow.
-
-## Steps to Reproduce
-
-### Step 1 – Start the registration process
-
-![Email Registration](images/email-otp-01.png)
-
-### Step 2 – Retrieve the email verification code
-
-![Email OTP Received](images/email-otp-02.png)
-
-### Step 3 – Submit an invalid OTP
-
-An invalid OTP was submitted instead of the valid verification code.
-
-![Invalid Email OTP](images/email-otp-03.png)
-
-### Step 4 – Observe the original response
-
-The server returned:
-
-```http
-HTTP/2 401 Unauthorized
-```
-
-![Original Email OTP Response](images/email-otp-04.png)
-
-### Step 5 – Manipulate the response
-
-The response was modified to indicate successful verification.
-
-![Modified Email OTP Response](images/email-otp-05.png)
-
-### Step 6 – Verify registration flow continuation
-
-The application proceeded to the next registration step.
-
-![Email OTP Verification Result](images/email-otp-06.png)
-
-## Impact
-
-If the subsequent registration process does not independently verify the email verification state on the server, an attacker may potentially register an account without successfully completing email OTP verification.
-
-Potential impact includes:
-
-- Bypass of email verification
-- Unauthorized account registration
-- Weakening of account validation controls
-- Potential abuse of email-based trust mechanisms
-
-## Remediation
-
-- Validate email OTPs server-side.
-- Store verification state server-side and bind it to the registration session.
-- Do not rely on client-side interpretation of `200 OK` or success messages.
-- Ensure the final account-creation endpoint independently verifies the email verification state.
-- Implement OTP expiration, single-use enforcement, rate limiting, and attempt limits.
-
----
-
-# 3. Signup Flow – Response Manipulation
-
-## Vulnerability Type
-
-**Signup Response Manipulation / Client-Side Trust Issue**
-
-## Target Application
-
-**Taskbear Web Application**
-
-## Vulnerable Endpoint
-
-```http
-POST /api/v1/uwa/auth/signup
-```
-
-## Description
-
-During testing of the signup functionality, a registration request using an already-associated mobile number was submitted.
-
-The server correctly rejected the request with:
-
-```http
-HTTP/2 401 Unauthorized
-```
-
-and returned:
-
-```json
-{
-  "statusCode": 401,
-  "message": "Account already exists under this mobile number"
-}
-```
-
-The HTTP response status was then manipulated in Burp Suite from `401 Unauthorized` to `200 OK`.
-
-The application subsequently redirected to the sign-in page.
-
-> **Note:** The screenshots demonstrate response manipulation and application-flow continuation. They should not be described as a fully confirmed account-creation bypass unless a new account was actually created or another protected state was reached as a direct result of the manipulated response.
-
-## Steps to Reproduce
-
-### Step 1 – Submit the signup form
-
-![Signup Form](images/signup-01.png)
-
-### Step 2 – Observe the original rejection
-
-The server returned:
-
-```http
-HTTP/2 401 Unauthorized
-```
-
-with:
-
-```json
-{
-  "statusCode": 401,
-  "message": "Account already exists under this mobile number"
-}
-```
-
-![Original Signup Response](images/signup-02-original.png)
-
-### Step 3 – Manipulate the HTTP response
-
-The HTTP status was changed from:
-
-```http
-401 Unauthorized
-```
-
-to:
-
-```http
-200 OK
-```
-
-![Modified Signup Response](images/signup-03-modified.png)
-
-### Step 4 – Observe the resulting application flow
-
-The application redirected to the sign-in page.
-
-![Signup Flow Result](images/signup-04-result.png)
-
-## Impact
-
-If security-sensitive signup decisions depend on client-side interpretation of the HTTP response, response manipulation may allow an attacker to bypass intended registration restrictions.
-
-Potential impact depends on backend enforcement and may include:
-
-- Bypass of client-side signup restrictions
-- Unauthorized continuation of registration workflows
-- Inconsistent application state
-- Potential account duplication or registration abuse if backend validation is insufficient
-
-## Remediation
-
-- Enforce all signup restrictions server-side.
-- Do not trust client-side response status or messages.
-- Ensure the final account-creation endpoint independently validates account uniqueness.
-- Return and enforce a server-side registration state.
-- Ensure a manipulated response cannot result in account creation without successful backend validation.
-
----
-
-# Evidence Summary
-
-| Instance | Original Response | Manipulated Response | Result |
-|---|---|---|---|
-| Mobile OTP | `401 Unauthorized` | `200 OK` | Verification flow continued |
-| Email OTP | `401 Unauthorized` | `200 OK` | Registration flow continued |
-| Signup | `401 Unauthorized` | `200 OK` | Application redirected to sign-in |
-
-# Security Recommendation
-
-The application should treat OTP verification, account uniqueness, and registration state as **server-side security decisions**.
-
-Client-side applications must never be able to establish a trusted verification or registration state merely by receiving or interpreting a modified HTTP response.
-
-## Tools Used
-
-- Burp Suite
-- Web Browser
-- HTTP Proxy / Intercept
-- Taskbear Web Application
-
-## Learning Outcome
-
-These tests demonstrate how Burp Suite can be used to identify cases where application logic may rely on client-side interpretation of server responses, and why response manipulation alone must be distinguished from a genuine server-side security bypass.
+Client-side responses should never be treated as proof of successful OTP verification.
