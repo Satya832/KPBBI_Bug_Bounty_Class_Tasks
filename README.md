@@ -34,9 +34,9 @@ KPBBI_Bug_Bounty_Class_Tasks/
 │
 ├── README.md
 │
-├── Day 1 (30-10-2026) - Task 1.md
-├── Day 2 (xx-xx-2026) - Task 2.md
-├── Day 3 (xx-xx-2026) - Task 3.md
+├── Day_1(02-11-26)_Task_1.md
+├── Day_2(xx-xx-26)_Task_2.md
+├── Day_3(xx-xx-26)_Task_3.md
 │
 └── ...
 ```
